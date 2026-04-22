@@ -7,6 +7,7 @@ import {
 import { AuthContext } from '../context/AuthContext';
 import { API_BASE_URL } from '../api/config';
 import { buildGeoapifyStaticMapUrl, geocodeLocation, hasGeoapifyApiKey } from '../api/geoapify';
+import { getHostProfileForListing } from '../data/listingHosts';
 
 const { width } = Dimensions.get('window');
 
@@ -15,7 +16,6 @@ const C = {
   white: '#ffffff', accent: '#FF385C', bg: '#f8f9fb',
 };
 
-const HOST_IMG = 'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?auto=format&fit=crop&w=150&q=80';
 const MAP_IMG  = 'https://images.unsplash.com/photo-1524661135-423995f22d0b?auto=format&fit=crop&w=800&q=80';
 
 export default function ListingDetailScreen({ route, navigation }: any) {
@@ -46,6 +46,7 @@ export default function ListingDetailScreen({ route, navigation }: any) {
   const total     = rawPrice * nights + svcFee;
   const displayRating = String(item.rating || '4.8');
   const reviewCount = '158';
+  const host = getHostProfileForListing(item);
 
   useEffect(() => {
     if (!item?.location || !hasGeoapifyApiKey()) {
@@ -155,12 +156,12 @@ export default function ListingDetailScreen({ route, navigation }: any) {
           <View style={s.hostCard}>
             <View style={s.hostInner}>
               <View style={s.hostLeft}>
-                <Image source={{ uri: HOST_IMG }} style={s.hostAvatar} />
-                <Text style={s.hostName}>Bharat</Text>
+                <Image source={{ uri: host.avatar }} style={s.hostAvatar} />
+                <Text style={s.hostName}>{host.name}</Text>
                 <Text style={s.hostTag}>Host</Text>
               </View>
               <View style={{ flex:1 }}>
-                {[['2029','Reviews'],[`${displayRating}★`,'Rating'],['11','Years hosting']].map(([n, l], i) => (
+                {[[host.reviews,'Reviews'],[`${displayRating}★`,'Rating'],[host.yearsHosting,'Years hosting']].map(([n, l], i) => (
                   <View key={i}>
                     <View style={s.statRow}><Text style={s.statNum}>{n}</Text><Text style={s.statLabel}>{l}</Text></View>
                     {i < 2 && <View style={{ height:1, backgroundColor:'#eee', marginVertical:8 }} />}
@@ -168,8 +169,7 @@ export default function ListingDetailScreen({ route, navigation }: any) {
                 ))}
               </View>
             </View>
-            <Text style={s.bio}>Hosting has taught me to be a better person by heart, helping me make new friends across cultures. Travelling as a backpacker has made me resilient to deal with various situations in life...</Text>
-            <TouchableOpacity style={s.msgBtn}><Text style={s.msgTxt}>Message host</Text></TouchableOpacity>
+            <Text style={s.bio}>{host.bio}</Text>
           </View>
 
           {/* Reviews */}
@@ -423,8 +423,6 @@ const s = StyleSheet.create({
   statNum: { fontSize:16, fontWeight:'bold', color:C.darkNavy, width:50 },
   statLabel: { fontSize:12, color:C.steelBlue, marginBottom:2 },
   bio: { fontSize:15, color:C.darkNavy, lineHeight:22, marginTop:16 },
-  msgBtn: { marginTop:16, paddingVertical:12, backgroundColor:'#f8f9fb', borderRadius:8, alignItems:'center', borderWidth:1, borderColor:C.darkNavy },
-  msgTxt: { fontSize:16, fontWeight:'600', color:C.darkNavy },
   ratingGrid: { flexDirection:'row', flexWrap:'wrap', gap:16, marginBottom:20 },
   ratingItem: { width:'45%', flexDirection:'row', alignItems:'center', gap:8 },
   rL: { fontSize:12, color:C.steelBlue },

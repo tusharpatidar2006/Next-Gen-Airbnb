@@ -20,7 +20,7 @@ export function buildApiUrl(path: string) {
 
 export function hasUsableGeoapifyKey() {
   const key = typeof process !== 'undefined' ? process.env.NEXT_PUBLIC_GEOAPIFY_API_KEY : undefined;
-  return Boolean(key && key !== '70e83ffaeb2349e8b2188bf8521b4c9f');
+  return Boolean(key && key !== 'api_key_ur_geoapify');
 }
 
 export function getGeoapifyApiKey() {

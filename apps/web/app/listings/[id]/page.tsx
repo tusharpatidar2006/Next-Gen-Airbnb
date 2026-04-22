@@ -6,23 +6,9 @@ import { useState, useEffect } from 'react';
 import { getAuthToken } from '../../../lib/auth';
 import { buildApiUrl, getGeoapifyApiKey } from '../../../lib/api';
 import { buildGeoapifyStaticMapUrl, geocodeLocation } from '../../../lib/geoapify';
+import { listingsData } from '../../../data/listings';
+import { getHostProfileForListing } from '../../../lib/listing-hosts';
 
-// Mock Data Source (used as fallback for non-db items)
-const homePhotos = [
-  'https://images.unsplash.com/photo-1484154218962-a197022b5858?auto=format&fit=crop&w=1200&q=80',
-  'https://images.unsplash.com/photo-1512917774080-9991f1c4c750?auto=format&fit=crop&w=1200&q=80',
-  'https://images.unsplash.com/photo-1480074568708-e7b720bb3f09?auto=format&fit=crop&w=1200&q=80',
-  'https://images.unsplash.com/photo-1502005097973-6a7082348e28?auto=format&fit=crop&w=1200&q=80',
-  'https://images.unsplash.com/photo-1449844908441-8829872d2607?auto=format&fit=crop&w=1200&q=80',
-];
-
-const mockItems = [
-  { id: 'pn1', title: 'Modern Loft in Koregaon Park', subtitle: 'Designer duplex with terrace', location: 'Pune City', price: 8200, rating: '4.92', image: homePhotos[0] },
-  { id: 'pn2', title: 'Villa in Aundh', subtitle: 'Smart home with pool & garden', location: 'Aundh', price: 12500, rating: '4.87', image: homePhotos[1] },
-  { id: 'pn3', title: 'Bungalow in Baner', subtitle: 'Quiet neighbourhood, fiber WiFi', location: 'Baner', price: 6900, rating: '4.78', image: homePhotos[2] },
-];
-
-const BHARAT_AVATAR = 'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?auto=format&fit=crop&w=150&q=80';
 const MAP_PLACEHOLDER = 'https://images.unsplash.com/photo-1524661135-423995f22d0b?auto=format&fit=crop&w=1200&q=80'; 
 
 export default function ListingDetail({ params }: { params: { id: string } }) {
@@ -69,20 +55,25 @@ export default function ListingDetail({ params }: { params: { id: string } }) {
         console.error('Failed to fetch from DB', err);
       }
       
-      // Fallback to mock item
-      let item = mockItems.find(i => i.id === params.id);
+      // Fallback to seeded catalog item
+      let item = listingsData.find(i => i.id === params.id);
       if (!item) {
         item = {
           id: params.id,
           title: 'Beautiful Property',
           subtitle: 'Premium stay',
           location: 'India',
-          price: 10000,
+          price: '₹10,000',
           rating: '4.85',
-          image: 'https://images.unsplash.com/photo-1416331108676-a22ccb276e35?auto=format&fit=crop&w=1200&q=80'
+          image: 'https://images.unsplash.com/photo-1416331108676-a22ccb276e35?auto=format&fit=crop&w=1200&q=80',
+          category: 'homes',
         };
       }
-      setListing({ ...item, fromDb: false });
+      setListing({
+        ...item,
+        price: typeof item.price === 'number' ? item.price : Number(String(item.price).replace(/[^0-9.]/g, '')) || 10000,
+        fromDb: false,
+      });
       setLoading(false);
     };
 
@@ -182,6 +173,7 @@ export default function ListingDetail({ params }: { params: { id: string } }) {
   };
 
   if (loading || !listing) return <div className="p-10 text-center">Loading property...</div>;
+  const host = getHostProfileForListing(listing);
 
   return (
     <div className="min-h-screen bg-white text-[#1a2742] pb-32 relative">
@@ -268,8 +260,8 @@ export default function ListingDetail({ params }: { params: { id: string } }) {
           
           <div className="bg-[#f8f9fb] rounded-[32px] p-8 shadow-sm flex flex-col md:flex-row gap-8 items-center md:items-start border border-[#f1f1f1]">
             <div className="flex flex-col items-center flex-none w-48 text-center bg-white p-6 rounded-[24px] shadow-[0_8px_20px_rgba(26,39,66,0.06)]">
-              <img src={BHARAT_AVATAR} className="w-24 h-24 rounded-full object-cover mb-3" alt="Host Avatar" />
-              <div className="text-2xl font-extrabold tracking-tight">Bharat</div>
+              <img src={host.avatar} className="w-24 h-24 rounded-full object-cover mb-3" alt={`${host.name} avatar`} />
+              <div className="text-2xl font-extrabold tracking-tight">{host.name}</div>
               <div className="text-sm font-medium text-[#8faec8] mb-4">Host</div>
             </div>
 
@@ -277,9 +269,11 @@ export default function ListingDetail({ params }: { params: { id: string } }) {
                <ul className="space-y-3 text-[15px] mb-6">
                  <li className="flex items-center gap-3"><span className="text-xl">💼</span> My work: Lawyer</li>
                  <li className="flex items-center gap-3"><span className="text-xl">🗣</span> Speaks English and Hindi</li>
+                 <li className="flex items-center gap-3"><span className="text-xl">Reviews</span> {host.reviews} guest reviews</li>
+                 <li className="flex items-center gap-3"><span className="text-xl">Years</span> Hosting for {host.yearsHosting} years</li>
                </ul>
                <p className="text-[#2c3e5e] leading-relaxed mb-6">
-                 Hosting has taught me to be a better person by heart, helped me make new friends and be introduced to various cultures. Travelling as a backpacker has made me strong to deal with various situations in life, be in love with mother nature and meet people with similar interests. I am a host to various listings in Pune...
+                  {host.bio}
                </p>
             </div>
           </div>
