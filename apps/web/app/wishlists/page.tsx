@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { listingsData } from '../../data/listings';
+import { buildApiUrl } from '../../lib/api';
 
 export default function WishlistPage() {
   const [favorites, setFavorites] = useState<string[]>([]);
@@ -17,7 +18,7 @@ export default function WishlistPage() {
           return;
         }
 
-        const res = await fetch('http://localhost:4001/wishlist', {
+        const res = await fetch(buildApiUrl('/wishlist'), {
           headers: { Authorization: `Bearer ${token}` }
         });
         const data = await res.json();
@@ -41,7 +42,7 @@ export default function WishlistPage() {
 
     if (token) {
       try {
-        await fetch('http://localhost:4001/wishlist/toggle', {
+        await fetch(buildApiUrl('/wishlist/toggle'), {
           method: 'POST',
           headers: { 
             'Content-Type': 'application/json',

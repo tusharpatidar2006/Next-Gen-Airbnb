@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
+import { buildApiUrl } from '../../lib/api';
 
 type Property = {
   id: string;
@@ -44,7 +45,7 @@ export default function HostDashboard() {
     const token = localStorage.getItem('nwxt_token');
     if (!token) { setLoading(false); return; }
     try {
-      const res = await fetch('http://localhost:4001/host/properties', {
+      const res = await fetch(buildApiUrl('/host/properties'), {
         headers: { Authorization: `Bearer ${token}` }
       });
       const data = await res.json();
@@ -87,7 +88,7 @@ export default function HostDashboard() {
     setSubmitting(true);
     const token = localStorage.getItem('nwxt_token');
     try {
-      const res = await fetch('http://localhost:4001/host/properties', {
+      const res = await fetch(buildApiUrl('/host/properties'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({
@@ -116,7 +117,7 @@ export default function HostDashboard() {
   async function handleDelete(id: string) {
     const token = localStorage.getItem('nwxt_token');
     try {
-      await fetch(`http://localhost:4001/host/properties/${id}`, {
+      await fetch(buildApiUrl(`/host/properties/${id}`), {
         method: 'DELETE',
         headers: { Authorization: `Bearer ${token}` }
       });

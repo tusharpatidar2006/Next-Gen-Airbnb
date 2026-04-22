@@ -1,4 +1,4 @@
-import MapboxMap from '../../components/MapboxMap';
+import GeoapifyMap from '../../components/GeoapifyMap';
 import Link from 'next/link';
 
 const stats = [
@@ -25,9 +25,9 @@ export default function MapViewPage() {
                 Explore stays across India
               </h1>
               <p className="mt-3 max-w-2xl text-base leading-7" style={{ color: '#2c3e5e' }}>
-                Click any city pin to preview available homes. The map works instantly —
-                add a <code className="rounded bg-[#d4e4f7] px-1.5 py-0.5 text-sm">NEXT_PUBLIC_MAPBOX_TOKEN</code> to
-                switch to a live Mapbox scene.
+                Every property now uses its own listing location. Add a{' '}
+                <code className="rounded bg-[#d4e4f7] px-1.5 py-0.5 text-sm">NEXT_PUBLIC_GEOAPIFY_API_KEY</code>{' '}
+                to geocode locations and render the Geoapify map.
               </p>
             </div>
             <div className="flex flex-wrap gap-3">
@@ -56,19 +56,19 @@ export default function MapViewPage() {
           {/* Map */}
           <div className="overflow-hidden rounded-[28px]"
             style={{ border: '1px solid rgba(212,228,247,0.50)' }}>
-            <MapboxMap />
+            <GeoapifyMap />
           </div>
 
           {/* Info grid */}
           <div className="grid gap-5 md:grid-cols-2">
             <div className="map-card rounded-[26px] p-6">
-              <h2 className="text-xl font-bold" style={{ color: '#1a2742' }}>Demo mode</h2>
+              <h2 className="text-xl font-bold" style={{ color: '#1a2742' }}>Property mode</h2>
               <ul className="mt-4 space-y-2.5 text-sm" style={{ color: '#2c3e5e' }}>
                 {[
-                  'Works without any Mapbox API key',
-                  'Click city labels in the list or pins on the map',
-                  'Each city shows a photo + price preview card',
-                  'Hover over any pin for a tooltip',
+                  'Each property is geocoded from its own location string',
+                  'The selected property is centered on the map',
+                  'Markers come from Geoapify static maps',
+                  'The property list updates the map on click',
                 ].map(t => (
                   <li key={t} className="flex items-start gap-2">
                     <span className="mt-0.5 text-[#8faec8]">✓</span> {t}
@@ -80,9 +80,9 @@ export default function MapViewPage() {
               <h2 className="text-xl font-bold" style={{ color: '#1a2742' }}>Live mode</h2>
               <ul className="mt-4 space-y-2.5 text-sm" style={{ color: '#2c3e5e' }}>
                 {[
-                  'Add NEXT_PUBLIC_MAPBOX_TOKEN to .env.local',
-                  'Map automatically switches to Mapbox Light style',
-                  'Full zoom, pan, rotation & navigation controls',
+                  'Add NEXT_PUBLIC_GEOAPIFY_API_KEY to .env.local',
+                  'Geoapify geocodes each listing location in India',
+                  'Static map markers are rendered from those coordinates',
                   'Set NEXT_PUBLIC_API_BASE_URL for backend auth',
                 ].map(t => (
                   <li key={t} className="flex items-start gap-2">

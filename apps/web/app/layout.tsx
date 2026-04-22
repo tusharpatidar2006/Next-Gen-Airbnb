@@ -63,7 +63,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                 <div className="flex flex-wrap gap-4" style={{ color: 'rgba(255,255,255,0.45)' }}>
                   <span>Next.js 14</span>
                   <span>Expo Mobile</span>
-                  <span>Mapbox Ready</span>
+                  <span>Geoapify Maps</span>
                   <span>TanStack Query</span>
                 </div>
               </div>

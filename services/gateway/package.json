@@ -7,13 +7,7 @@
     "build": "tsc -p ."
   },
   "dependencies": {
-    "@apollo/server": "^4.11.0",
-    "@apollo/subgraph": "^0.12.0",
-    "@apollo/server-plugin-base": "^4.11.0",
-    "graphql": "^16.8.0",
-    "fastify": "^4.25.0",
-    "fastify-express": "^8.2.0",
-    "apollo-server-fastify": "^3.11.1"
+    "fastify": "^4.25.0"
   },
   "devDependencies": {
     "ts-node-dev": "^2.0.0",

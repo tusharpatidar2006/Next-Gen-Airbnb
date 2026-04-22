@@ -9,14 +9,10 @@ export type AuthResponse = {
   token?: string;
 };
 
-declare const process: {
-  env: {
-    NEXT_PUBLIC_API_BASE_URL?: string;
-  };
-};
+import { buildApiUrl } from './api';
 
-const apiBase = (typeof process !== 'undefined' ? process.env.NEXT_PUBLIC_API_BASE_URL : undefined)?.replace(/\/+$/u, '');
-const AUTH_TOKEN_KEY = 'nwxt-auth-token';
+const AUTH_TOKEN_KEY = 'nwxt_token';
+const AUTH_USER_KEY = 'nwxt_user';
 
 async function postJson<T>(url: string, payload: object): Promise<T> {
   const response = await fetch(url, {
@@ -30,14 +26,6 @@ async function postJson<T>(url: string, payload: object): Promise<T> {
   }
 
   return response.json();
-}
-
-function buildAuthUrl(path: string) {
-  return apiBase ? `${apiBase}${path}` : `/api/auth${path}`;
-}
-
-function buildProfileUrl() {
-  return apiBase ? `${apiBase}/profile` : '/api/profile';
 }
 
 export function getAuthToken() {
@@ -62,14 +50,15 @@ export function clearAuthToken() {
   }
 
   window.localStorage.removeItem(AUTH_TOKEN_KEY);
+  window.localStorage.removeItem(AUTH_USER_KEY);
 }
 
 export async function loginUser(payload: AuthPayload) {
-  return postJson<AuthResponse>(buildAuthUrl('/login'), payload);
+  return postJson<AuthResponse>(buildApiUrl('/login'), payload);
 }
 
 export async function registerUser(payload: AuthPayload) {
-  return postJson<AuthResponse>(buildAuthUrl('/register'), payload);
+  return postJson<AuthResponse>(buildApiUrl('/register'), payload);
 }
 
 export async function fetchProfile() {
@@ -78,7 +67,7 @@ export async function fetchProfile() {
     throw new Error('No auth token available');
   }
 
-  const response = await fetch(buildProfileUrl(), {
+  const response = await fetch(buildApiUrl('/profile'), {
     method: 'GET',
     headers: {
       Authorization: `Bearer ${token}`,

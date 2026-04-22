@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { MapPin, Umbrella, Building2, Home, TrainFront, ChevronLeft, ChevronRight, Plus, Minus, Search, X } from 'lucide-react';
+import { buildApiUrl } from '../lib/api';
 
 /* ─────────────────────────────────────────────
    Colour tokens (matches the pastel image)
@@ -288,7 +289,7 @@ function SearchBar({
             {searchWho || <span className="text-[#8faec8]">Add guests</span>}
           </div>
         </div>
-        <button type="button" onClick={(e) => { e.stopPropagation(); setActivePopover(null); handleSearch(); }} aria-label="Search"
+        <button type="button" onClick={(e) => { e.stopPropagation(); setActivePopover(null); onSearch(); }} aria-label="Search"
           className="flex h-12 min-w-[100px] flex-none items-center justify-center gap-2 rounded-full text-[16px] font-bold shadow-[0_8px_24px_rgba(26,39,66,0.30)] pointer-events-auto bg-[#1a2742] hover:bg-[#2c3e5e] text-white transition-colors">
           <Search size={18} strokeWidth={3} />
           <span className="hidden lg:inline mr-2">Search</span>
@@ -594,7 +595,7 @@ export default function HomePage() {
     // Fetch initial wishlist if logged in
     const token = localStorage.getItem('nwxt_token');
     if (token) {
-      fetch('http://localhost:4001/wishlist', {
+      fetch(buildApiUrl('/wishlist'), {
         headers: { Authorization: `Bearer ${token}` }
       })
       .then(r => r.json())
@@ -618,7 +619,7 @@ export default function HomePage() {
 
     if (token) {
       try {
-        await fetch('http://localhost:4001/wishlist/toggle', {
+        await fetch(buildApiUrl('/wishlist/toggle'), {
           method: 'POST',
           headers: { 
             'Content-Type': 'application/json',

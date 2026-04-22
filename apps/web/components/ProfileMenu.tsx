@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
+import { buildApiUrl } from '../lib/api';
 
 export default function ProfileMenu() {
   const [user, setUser] = useState<{ id: string, name: string, email: string } | null>(null);
@@ -28,7 +29,7 @@ export default function ProfileMenu() {
     if (isOpen && user) {
       const token = localStorage.getItem('nwxt_token');
       if (token) {
-        fetch('http://localhost:4001/wishlist', {
+        fetch(buildApiUrl('/wishlist'), {
           headers: { Authorization: `Bearer ${token}` }
         })
         .then(r => r.json())

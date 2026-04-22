@@ -4,8 +4,14 @@ import fastifyCors from '@fastify/cors';
 import bcrypt from 'bcryptjs';
 import { PrismaClient } from '@prisma/client';
 import dotenv from 'dotenv';
+import path from 'path';
 
 dotenv.config();
+
+if (process.env.DATABASE_URL?.startsWith('file:./')) {
+  const sqliteFile = process.env.DATABASE_URL.slice('file:'.length);
+  process.env.DATABASE_URL = `file:${path.resolve(process.cwd(), sqliteFile).replace(/\\/g, '/')}`;
+}
 
 const PORT = Number(process.env.PORT ?? 4001);
 const JWT_SECRET = process.env.JWT_SECRET ?? 'nwxt-gen-default-secret';
@@ -118,6 +124,157 @@ app.post('/wishlist/toggle', { preValidation: [(app as any).authenticate] }, asy
     });
     return reply.send({ status: 'added', listingId });
   }
+});
+
+app.get('/agent-memory/:agentId', { preValidation: [(app as any).authenticate] }, async (request, reply) => {
+  const userPayload = request.user as { userId: string };
+  const { agentId } = request.params as { agentId: string };
+
+  const session = await prisma.chatSession.findUnique({
+    where: {
+      userId_agentId: {
+        userId: userPayload.userId,
+        agentId,
+      }
+    },
+    include: {
+      messages: {
+        orderBy: { createdAt: 'asc' }
+      }
+    }
+  });
+
+  return reply.send({
+    sessionId: session?.id ?? null,
+    messages: (session?.messages ?? []).map(message => ({
+      id: message.id,
+      role: message.role,
+      text: message.text,
+      createdAt: message.createdAt,
+    }))
+  });
+});
+
+app.put('/agent-memory/:agentId', { preValidation: [(app as any).authenticate] }, async (request, reply) => {
+  const userPayload = request.user as { userId: string };
+  const { agentId } = request.params as { agentId: string };
+  const { messages } = request.body as {
+    messages?: Array<{ role?: string; text?: string }>;
+  };
+
+  const validMessages = (messages ?? []).filter(
+    (message): message is { role: string; text: string } =>
+      typeof message?.role === 'string' &&
+      typeof message?.text === 'string' &&
+      message.text.trim().length > 0
+  );
+
+  const session = await prisma.chatSession.upsert({
+    where: {
+      userId_agentId: {
+        userId: userPayload.userId,
+        agentId,
+      }
+    },
+    update: {},
+    create: {
+      userId: userPayload.userId,
+      agentId,
+    }
+  });
+
+  await prisma.chatMessage.deleteMany({
+    where: { sessionId: session.id }
+  });
+
+  if (validMessages.length > 0) {
+    await prisma.chatMessage.createMany({
+      data: validMessages.map(message => ({
+        sessionId: session.id,
+        role: message.role,
+        text: message.text.trim(),
+      }))
+    });
+  }
+
+  const updatedSession = await prisma.chatSession.findUnique({
+    where: { id: session.id },
+    include: {
+      messages: {
+        orderBy: { createdAt: 'asc' }
+      }
+    }
+  });
+
+  return reply.send({
+    sessionId: session.id,
+    messages: (updatedSession?.messages ?? []).map(message => ({
+      id: message.id,
+      role: message.role,
+      text: message.text,
+      createdAt: message.createdAt,
+    }))
+  });
+});
+
+app.post('/agent-memory/:agentId', { preValidation: [(app as any).authenticate] }, async (request, reply) => {
+  const userPayload = request.user as { userId: string };
+  const { agentId } = request.params as { agentId: string };
+  const { messages } = request.body as {
+    messages?: Array<{ role?: string; text?: string }>;
+  };
+
+  const validMessages = (messages ?? []).filter(
+    (message): message is { role: string; text: string } =>
+      typeof message?.role === 'string' &&
+      typeof message?.text === 'string' &&
+      message.text.trim().length > 0
+  );
+
+  if (validMessages.length === 0) {
+    return reply.status(400).send({ message: 'At least one message is required.' });
+  }
+
+  const session = await prisma.chatSession.upsert({
+    where: {
+      userId_agentId: {
+        userId: userPayload.userId,
+        agentId,
+      }
+    },
+    update: {},
+    create: {
+      userId: userPayload.userId,
+      agentId,
+    }
+  });
+
+  await prisma.chatMessage.createMany({
+    data: validMessages.map(message => ({
+      sessionId: session.id,
+      role: message.role,
+      text: message.text.trim(),
+    }))
+  });
+
+  const updatedSession = await prisma.chatSession.findUnique({
+    where: { id: session.id },
+    include: {
+      messages: {
+        orderBy: { createdAt: 'asc' }
+      }
+    }
+  });
+
+  return reply.send({
+    sessionId: session.id,
+    messages: (updatedSession?.messages ?? []).map(message => ({
+      id: message.id,
+      role: message.role,
+      text: message.text,
+      createdAt: message.createdAt,
+    }))
+  });
 });
 
 // ─── PUBLIC LISTINGS ─────────────────────────────────────────────────────────

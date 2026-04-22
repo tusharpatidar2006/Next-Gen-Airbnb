@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
+import { buildApiUrl } from '../../lib/api';
 
 type Listing = {
   id: string;
@@ -46,7 +47,7 @@ function ListingsContent() {
 
   // Load initial locations
   useEffect(() => {
-    fetch('http://localhost:4001/listings/locations')
+    fetch(buildApiUrl('/listings/locations'))
       .then(r => r.json())
       .then(d => setLocations(d.locations || []))
       .catch(console.error);
@@ -56,7 +57,7 @@ function ListingsContent() {
   useEffect(() => {
     const token = localStorage.getItem('nwxt_token');
     if (token) {
-      fetch('http://localhost:4001/wishlist', { headers: { Authorization: `Bearer ${token}` } })
+      fetch(buildApiUrl('/wishlist'), { headers: { Authorization: `Bearer ${token}` } })
         .then(r => r.json())
         .then(d => { if (d.wishlist) setFavorites(new Set(d.wishlist)); })
         .catch(console.error);
@@ -73,7 +74,7 @@ function ListingsContent() {
       if (minPrice) params.set('minPrice', minPrice);
       if (maxPrice) params.set('maxPrice', maxPrice);
 
-      const res = await fetch(`http://localhost:4001/listings?${params.toString()}`);
+      const res = await fetch(buildApiUrl(`/listings?${params.toString()}`));
       const data = await res.json();
       setListings(data.listings || []);
       setTotal(data.total || 0);
@@ -100,7 +101,7 @@ function ListingsContent() {
       return next;
     });
     if (token) {
-      await fetch('http://localhost:4001/wishlist/toggle', {
+      await fetch(buildApiUrl('/wishlist/toggle'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({ listingId: id })

@@ -1,4 +1,4 @@
-import React, { useState, useContext } from 'react';
+import React, { useState, useContext, useEffect } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, Image,
   TouchableOpacity, Dimensions, StatusBar, Platform,
@@ -6,6 +6,8 @@ import {
 } from 'react-native';
 import { AuthContext } from '../context/AuthContext';
 import { API_BASE_URL } from '../api/config';
+import { buildGeoapifyStaticMapUrl, geocodeLocation, hasGeoapifyApiKey } from '../api/geoapify';
+import { getHostProfileForListing } from '../data/listingHosts';
 
 const { width } = Dimensions.get('window');
 
@@ -14,12 +16,12 @@ const C = {
   white: '#ffffff', accent: '#FF385C', bg: '#f8f9fb',
 };
 
-const HOST_IMG = 'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?auto=format&fit=crop&w=150&q=80';
 const MAP_IMG  = 'https://images.unsplash.com/photo-1524661135-423995f22d0b?auto=format&fit=crop&w=800&q=80';
 
 export default function ListingDetailScreen({ route, navigation }: any) {
   const { item } = route.params;
-  const { user, token } = useContext(AuthContext) as any;
+  const { user, token, wishlistIds, toggleWishlist } = useContext(AuthContext) as any;
+  const isWishlisted = wishlistIds.includes(item.id);
 
   const [bookingModal, setBookingModal] = useState(false);
   const [payModal,     setPayModal]     = useState(false);
@@ -34,11 +36,59 @@ export default function ListingDetailScreen({ route, navigation }: any) {
   const [expiry,     setExpiry]     = useState('');
   const [cvv,        setCvv]        = useState('');
   const [payMethod,  setPayMethod]  = useState<'card'|'upi'>('card');
+  const [mapUri, setMapUri] = useState<string | null>(null);
+  const [mapLoading, setMapLoading] = useState(false);
+  const [mapZoom, setMapZoom] = useState(14);
 
   const rawPrice  = parseFloat(String(item.price).replace(/[^0-9.]/g, '')) || 5000;
   const nights    = 2;
   const svcFee    = Math.round(rawPrice * 0.15);
   const total     = rawPrice * nights + svcFee;
+  const displayRating = String(item.rating || '4.8');
+  const reviewCount = '158';
+  const host = getHostProfileForListing(item);
+
+  useEffect(() => {
+    if (!item?.location || !hasGeoapifyApiKey()) {
+      setMapUri(null);
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadMap = async () => {
+      setMapLoading(true);
+      try {
+        const point = await geocodeLocation(`${item.location}, India`);
+        if (!cancelled) {
+          setMapUri(point ? buildGeoapifyStaticMapUrl({ center: point, width: 1200, height: 760, zoom: mapZoom }) : null);
+        }
+      } finally {
+        if (!cancelled) {
+          setMapLoading(false);
+        }
+      }
+    };
+
+    loadMap();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [item?.location, mapZoom]);
+
+  const onToggleWishlist = async () => {
+    const result = await toggleWishlist(item.id);
+    if (!result.ok) {
+      Alert.alert('Login Required', result.message || 'Please log in to save wishlists.');
+      return;
+    }
+
+    Alert.alert(
+      result.added ? 'Saved to wishlist' : 'Removed from wishlist',
+      result.added ? 'This stay was added to your wishlist.' : 'This stay was removed from your wishlist.'
+    );
+  };
 
   const onReserve = () => {
     if (!user) {
@@ -84,14 +134,16 @@ export default function ListingDetailScreen({ route, navigation }: any) {
           <TouchableOpacity style={s.backBtn} onPress={() => navigation.goBack()}>
             <Text style={s.backTxt}>←</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={s.heartBtn}><Text style={s.heartTxt}>♡</Text></TouchableOpacity>
+          <TouchableOpacity style={s.heartBtn} onPress={onToggleWishlist}>
+            <Text style={[s.heartTxt, isWishlisted && { color: C.accent }]}>{isWishlisted ? '♥' : '♡'}</Text>
+          </TouchableOpacity>
         </View>
 
         <View style={s.pad}>
           {/* Title */}
           <Text style={s.title}>{item.title}</Text>
           <View style={s.row}>
-            <Text style={s.rating}>★ {item.rating} <Text style={s.muted}>· 158 reviews</Text></Text>
+            <Text style={s.rating}>★ {displayRating} <Text style={s.muted}>· {reviewCount} reviews</Text></Text>
             <Text style={s.loc}>{item.location}</Text>
           </View>
           <View style={s.div} />
@@ -104,12 +156,12 @@ export default function ListingDetailScreen({ route, navigation }: any) {
           <View style={s.hostCard}>
             <View style={s.hostInner}>
               <View style={s.hostLeft}>
-                <Image source={{ uri: HOST_IMG }} style={s.hostAvatar} />
-                <Text style={s.hostName}>Bharat</Text>
+                <Image source={{ uri: host.avatar }} style={s.hostAvatar} />
+                <Text style={s.hostName}>{host.name}</Text>
                 <Text style={s.hostTag}>Host</Text>
               </View>
               <View style={{ flex:1 }}>
-                {[['2029','Reviews'],['4.68★','Rating'],['11','Years hosting']].map(([n, l], i) => (
+                {[[host.reviews,'Reviews'],[`${displayRating}★`,'Rating'],[host.yearsHosting,'Years hosting']].map(([n, l], i) => (
                   <View key={i}>
                     <View style={s.statRow}><Text style={s.statNum}>{n}</Text><Text style={s.statLabel}>{l}</Text></View>
                     {i < 2 && <View style={{ height:1, backgroundColor:'#eee', marginVertical:8 }} />}
@@ -117,13 +169,12 @@ export default function ListingDetailScreen({ route, navigation }: any) {
                 ))}
               </View>
             </View>
-            <Text style={s.bio}>Hosting has taught me to be a better person by heart, helping me make new friends across cultures. Travelling as a backpacker has made me resilient to deal with various situations in life...</Text>
-            <TouchableOpacity style={s.msgBtn}><Text style={s.msgTxt}>Message host</Text></TouchableOpacity>
+            <Text style={s.bio}>{host.bio}</Text>
           </View>
 
           {/* Reviews */}
           <View style={s.div} />
-          <Text style={s.sec}>★ 4.79 · 158 reviews</Text>
+          <Text style={s.sec}>★ {displayRating} · {reviewCount} reviews</Text>
           <View style={s.ratingGrid}>
             {[['✨','Cleanliness','4.8'],['📝','Accuracy','4.8'],['🔑','Check-in','4.8'],['💬','Communication','4.7']].map(([icon,label,score],i)=>(
               <View key={i} style={s.ratingItem}>
@@ -153,8 +204,34 @@ export default function ListingDetailScreen({ route, navigation }: any) {
           <Text style={s.sec}>Where you'll be</Text>
           <Text style={s.mapSub}>{item.location}, India</Text>
           <View style={s.mapBox}>
-            <Image source={{ uri: MAP_IMG }} style={s.mapImg} />
-            <View style={s.pin}><Text style={{fontSize:24,textAlign:'center'}}>🏠</Text></View>
+            <Image source={{ uri: mapUri || MAP_IMG }} style={s.mapImg} />
+            <View style={s.mapZoomControls}>
+              <TouchableOpacity
+                style={[s.mapZoomBtn, (!mapUri || mapZoom <= 5) && s.mapZoomBtnDisabled]}
+                onPress={() => setMapZoom((current) => Math.max(5, current - 1))}
+                disabled={!mapUri || mapZoom <= 5}
+              >
+                <Text style={s.mapZoomBtnText}>-</Text>
+              </TouchableOpacity>
+              <View style={s.mapZoomBadge}>
+                <Text style={s.mapZoomLabel}>Zoom</Text>
+                <Text style={s.mapZoomValue}>{mapZoom}x</Text>
+              </View>
+              <TouchableOpacity
+                style={[s.mapZoomBtn, (!mapUri || mapZoom >= 18) && s.mapZoomBtnDisabled]}
+                onPress={() => setMapZoom((current) => Math.min(18, current + 1))}
+                disabled={!mapUri || mapZoom >= 18}
+              >
+                <Text style={s.mapZoomBtnText}>+</Text>
+              </TouchableOpacity>
+            </View>
+            {!mapUri ? <View style={s.pin}><Text style={{fontSize:24,textAlign:'center'}}>🏠</Text></View> : null}
+            {mapLoading ? (
+              <View style={s.mapLoadingOverlay}>
+                <ActivityIndicator color="#fff" />
+                <Text style={s.mapLoadingText}>Loading Geoapify map...</Text>
+              </View>
+            ) : null}
             <View style={s.mapLabel}><Text style={{color:'#fff',fontSize:12,fontWeight:'bold'}}>Exact location provided after booking</Text></View>
           </View>
         </View>
@@ -346,8 +423,6 @@ const s = StyleSheet.create({
   statNum: { fontSize:16, fontWeight:'bold', color:C.darkNavy, width:50 },
   statLabel: { fontSize:12, color:C.steelBlue, marginBottom:2 },
   bio: { fontSize:15, color:C.darkNavy, lineHeight:22, marginTop:16 },
-  msgBtn: { marginTop:16, paddingVertical:12, backgroundColor:'#f8f9fb', borderRadius:8, alignItems:'center', borderWidth:1, borderColor:C.darkNavy },
-  msgTxt: { fontSize:16, fontWeight:'600', color:C.darkNavy },
   ratingGrid: { flexDirection:'row', flexWrap:'wrap', gap:16, marginBottom:20 },
   ratingItem: { width:'45%', flexDirection:'row', alignItems:'center', gap:8 },
   rL: { fontSize:12, color:C.steelBlue },
@@ -359,9 +434,18 @@ const s = StyleSheet.create({
   revDate: { fontSize:12, color:C.steelBlue },
   revText: { fontSize:15, color:C.darkNavy, lineHeight:22 },
   mapSub: { fontSize:15, color:C.darkNavy, marginBottom:16 },
-  mapBox: { width:'100%', height:220, borderRadius:16, overflow:'hidden', position:'relative', backgroundColor:'#eee' },
+  mapBox: { width:'100%', height:320, borderRadius:16, overflow:'hidden', position:'relative', backgroundColor:'#eee' },
   mapImg: { width:'100%', height:'100%', opacity:0.8 },
   pin: { position:'absolute', top:'50%', left:'50%', marginLeft:-25, marginTop:-25, width:50, height:50, backgroundColor:'rgba(255,255,255,0.9)', borderRadius:25, justifyContent:'center', alignItems:'center' },
+  mapZoomControls: { position:'absolute', top:12, right:12, alignItems:'center', gap:8 },
+  mapZoomBtn: { width:38, height:38, borderRadius:12, backgroundColor:'rgba(255,255,255,0.96)', justifyContent:'center', alignItems:'center' },
+  mapZoomBtnDisabled: { opacity:0.45 },
+  mapZoomBtnText: { fontSize:22, lineHeight:24, fontWeight:'800', color:C.darkNavy },
+  mapZoomBadge: { minWidth:58, paddingHorizontal:8, paddingVertical:6, borderRadius:12, backgroundColor:'rgba(255,255,255,0.96)', alignItems:'center' },
+  mapZoomLabel: { fontSize:10, fontWeight:'700', color:C.steelBlue, textTransform:'uppercase' },
+  mapZoomValue: { fontSize:13, fontWeight:'800', color:C.darkNavy },
+  mapLoadingOverlay: { position:'absolute', top:0, right:0, bottom:0, left:0, backgroundColor:'rgba(0,0,0,0.22)', justifyContent:'center', alignItems:'center', gap:8 },
+  mapLoadingText: { color:'#fff', fontSize:13, fontWeight:'600' },
   mapLabel: { position:'absolute', bottom:0, width:'100%', padding:10, backgroundColor:'rgba(0,0,0,0.5)', alignItems:'center' },
   bar: { position:'absolute', bottom:0, width:'100%', backgroundColor:'#fff', borderTopWidth:1, borderTopColor:'#f1f1f1', flexDirection:'row', justifyContent:'space-between', alignItems:'center', paddingHorizontal:24, paddingVertical:16, paddingBottom: Platform.OS==='ios'?34:16 },
   barPrice: { fontSize:16, fontWeight:'800', color:C.darkNavy },

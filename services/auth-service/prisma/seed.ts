@@ -1,5 +1,11 @@
 import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
+import path from 'path';
+
+if (process.env.DATABASE_URL?.startsWith('file:./')) {
+  const sqliteFile = process.env.DATABASE_URL.slice('file:'.length);
+  process.env.DATABASE_URL = `file:${path.resolve(process.cwd(), sqliteFile).replace(/\\/g, '/')}`;
+}
 
 const prisma = new PrismaClient();
 

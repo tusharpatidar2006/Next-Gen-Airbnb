@@ -1,13 +1,13 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { 
-  View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, 
-  SafeAreaView, KeyboardAvoidingView, Platform, Image, ActivityIndicator 
+import React, { useState, useRef, useEffect, useContext, useMemo } from 'react';
+import {
+  View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView,
+  SafeAreaView, KeyboardAvoidingView, Platform, Image, ActivityIndicator, Keyboard
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
-import { CLAUDE_API_KEY } from '../api/keys';
+import { OPENROUTER_API_KEY } from '../api/keys';
 import { API_BASE_URL } from '../api/config';
+import { AuthContext } from '../context/AuthContext';
 
-// Theme tokens mirroring the website
 const COLORS = {
   lavender: '#d4e4f7',
   sage: '#d8e9d4',
@@ -29,19 +29,132 @@ type Message = {
 };
 
 export default function ChatScreen({ route, navigation }: any) {
-  const agent = route.params?.agent || { name: 'Trip Planner', icon: '🧳' };
-  
+  const agent = route.params?.agent || { id: 'travel-agent', name: 'Travel Agent', icon: '🧳' };
+  const { token } = useContext(AuthContext) as any;
+  const defaultGreeting = useMemo(
+    () => `Hi! I'm your ${agent.name}. Where would you like to travel in India?`,
+    [agent.name]
+  );
+  const agentId = useMemo(
+    () => String(agent.id || agent.name || 'travel-agent').toLowerCase().replace(/[^a-z0-9-]+/g, '-'),
+    [agent.id, agent.name]
+  );
+
   const [messages, setMessages] = useState<Message[]>([
-    { id: 'msg-0', role: 'assistant', text: `Hi! I'm your ${agent.name}. Where would you like to travel in India?` }
+    { id: 'msg-0', role: 'assistant', text: defaultGreeting }
   ]);
   const [inputText, setInputText] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  
+  const [isHydratingMemory, setIsHydratingMemory] = useState(false);
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+
   const scrollViewRef = useRef<ScrollView>(null);
 
   useEffect(() => {
     scrollViewRef.current?.scrollToEnd({ animated: true });
   }, [messages]);
+
+  useEffect(() => {
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+
+    const showSub = Keyboard.addListener(showEvent, (event) => {
+      setKeyboardHeight(event.endCoordinates.height);
+    });
+    const hideSub = Keyboard.addListener(hideEvent, () => {
+      setKeyboardHeight(0);
+    });
+
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
+
+  useEffect(() => {
+    const loadMemory = async () => {
+      if (!token) {
+        setMessages([{ id: 'msg-0', role: 'assistant', text: defaultGreeting }]);
+        return;
+      }
+
+      setIsHydratingMemory(true);
+      try {
+        const response = await fetch(`${API_BASE_URL}/agent-memory/${agentId}`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+
+        if (!response.ok) {
+          throw new Error('Failed to load memory');
+        }
+
+        const data = await response.json();
+        if (Array.isArray(data.messages) && data.messages.length > 0) {
+          setMessages(
+            data.messages.map((message: any) => ({
+              id: String(message.id),
+              role: message.role === 'assistant' ? 'assistant' : 'user',
+              text: message.text
+            }))
+          );
+        } else {
+          setMessages([{ id: 'msg-0', role: 'assistant', text: defaultGreeting }]);
+        }
+      } catch (e) {
+        setMessages([{ id: 'msg-0', role: 'assistant', text: defaultGreeting }]);
+      } finally {
+        setIsHydratingMemory(false);
+      }
+    };
+
+    loadMemory();
+  }, [agentId, defaultGreeting, token]);
+
+  const fetchStoredMessages = async () => {
+    if (!token) {
+      return [] as Message[];
+    }
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/agent-memory/${agentId}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+
+      if (!response.ok) {
+        return [] as Message[];
+      }
+
+      const data = await response.json();
+      return Array.isArray(data.messages)
+        ? data.messages.map((message: any) => ({
+            id: String(message.id),
+            role: message.role === 'assistant' ? 'assistant' : 'user',
+            text: message.text
+          }))
+        : [];
+    } catch (e) {
+      return [] as Message[];
+    }
+  };
+
+  const replaceStoredMessages = async (persistedMessages: Array<{ role: Role; text: string }>) => {
+    if (!token) {
+      return;
+    }
+
+    try {
+      await fetch(`${API_BASE_URL}/agent-memory/${agentId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({ messages: persistedMessages })
+      });
+    } catch (e) {
+      console.log('Failed to replace agent memory', e);
+    }
+  };
 
   const fetchListings = async (query: any) => {
     try {
@@ -49,75 +162,63 @@ export default function ChatScreen({ route, navigation }: any) {
       const response = await fetch(`${API_BASE_URL}/listings`);
       if (!response.ok) throw new Error('API down');
       const data = await response.json();
-      
+
       let results = data.listings || [];
       if (locationMatch) {
-         results = results.filter((item: any) => 
-           item.location?.toLowerCase().includes(locationMatch) || 
-           item.title?.toLowerCase().includes(locationMatch)
-         );
+        results = results.filter((item: any) =>
+          item.location?.toLowerCase().includes(locationMatch) ||
+          item.title?.toLowerCase().includes(locationMatch)
+        );
       }
       return results.slice(0, 3);
     } catch (e) {
       console.log('Falling back to local mock data for agent', e);
-      // Fallback dummy data modeled after App.tsx mockSections
-      const fallbackListings = [
+      return [
         { id: 'f1', title: `Smart Home in ${query.location || 'India'}`, price: 8500, location: query.location || 'India', photos: ['https://images.unsplash.com/photo-1522708323590-d24dbb6b0267?w=600'] },
         { id: 'f2', title: `Luxury Villa in ${query.location || 'India'}`, price: 15000, location: query.location || 'India', photos: ['https://images.unsplash.com/photo-1484154218962-a197022b5858?w=600'] }
       ];
-      return fallbackListings;
     }
   };
 
-  const callClaude = async (userText: string) => {
-    if (!CLAUDE_API_KEY) {
-      setTimeout(() => {
-        setMessages(prev => [...prev, { 
-          id: Date.now().toString(), 
-          role: 'assistant', 
-          text: 'API Key is missing. Please add your CLAUDE_API_KEY in apps/mobile/src/api/keys.ts to enable my brain!' 
-        }]);
-        setIsLoading(false);
-      }, 1000);
+  const callModel = async (historyMessages: Message[]) => {
+    const storedMessages = await fetchStoredMessages();
+    const mergedHistory = storedMessages.length > 0 ? storedMessages : historyMessages;
+    const userText = mergedHistory[mergedHistory.length - 1]?.text || '';
+
+    if (!OPENROUTER_API_KEY) {
+      const fallbackMessage = {
+        id: Date.now().toString(),
+        role: 'assistant' as Role,
+        text: 'API key is missing. Please add your OPENROUTER_API_KEY in apps/mobile/src/api/keys.ts to enable chat.'
+      };
+      setMessages(prev => [...prev, fallbackMessage]);
+      await persistMessages([{ role: 'assistant', text: fallbackMessage.text }]);
+      setIsLoading(false);
       return;
     }
 
     try {
-      // Build conversation history for Claude API payload
-      const history = messages.map(m => ({
-        role: m.role,
-        content: m.text
-      }));
-      history.push({ role: 'user', content: userText });
-
       const requestBody = {
-        model: "claude-3-haiku-20240307",
-        max_tokens: 1000,
-        system: "You are a trip planning agent for an Indian travel app. Help users find homes, plan itineraries, and suggest experiences across India. You have access to a tool called search_listings. Use it whenever the user is asking for homes or stays in a particular location or city. Otherwise, provide helpful advice, itineraries, or packing lists. Keep your responses concise and friendly.",
-        messages: history,
-        tools: [
+        model: 'anthropic/claude-3-haiku',
+        messages: [
           {
-            name: "search_listings",
-            description: "Search for available homes, stays, or properties by location.",
-            input_schema: {
-              type: "object",
-              properties: {
-                location: { type: "string", description: "The city or neighbourhood in India (e.g., Pune, Goa, Mumbai)." },
-                budget: { type: "string", description: "The user's budget if mentioned." }
-              },
-              required: ["location"]
-            }
-          }
+            role: 'system',
+            content: 'You are a trip planning agent for an Indian travel app. Help users find homes, plan itineraries, and suggest experiences across India. When the user asks for homes or stays in a location, mention that you are also surfacing matching listings. Keep responses concise and friendly.'
+          },
+          ...mergedHistory.map(message => ({
+            role: message.role,
+            content: message.text
+          }))
         ]
       };
 
-      const response = await fetch('https://api.anthropic.com/v1/messages', {
+      const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'x-api-key': CLAUDE_API_KEY,
-          'anthropic-version': '2023-06-01',
-          'anthropic-dangerous-direct-browser-access': 'true' // Bypass CORS/browser safety since this is a local app
+          'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
+          'HTTP-Referer': 'https://next-gen-airbnb.local',
+          'X-Title': 'NWXT Gen Mobile'
         },
         body: JSON.stringify(requestBody)
       });
@@ -125,45 +226,58 @@ export default function ChatScreen({ route, navigation }: any) {
       const data = await response.json();
 
       if (data.error) {
-        setMessages(prev => [...prev, { id: Date.now().toString(), role: 'assistant', text: `Error: ${data.error.message}` }]);
+        const errorMessage = {
+          id: Date.now().toString(),
+          role: 'assistant' as Role,
+          text: `Error: ${data.error.message}`
+        };
+        setMessages(prev => [...prev, errorMessage]);
+        await replaceStoredMessages(
+          [...mergedHistory, errorMessage].map(message => ({ role: message.role, text: message.text }))
+        );
         setIsLoading(false);
         return;
       }
 
-      // Check if Claude responded with a tool use or a text message
-      const toolCals = data.content.filter((c: any) => c.type === 'tool_use');
-      const textCals = data.content.filter((c: any) => c.type === 'text');
+      const assistantMessage = data.choices?.[0]?.message?.content;
+      let finalText =
+        typeof assistantMessage === 'string'
+          ? assistantMessage
+          : Array.isArray(assistantMessage)
+            ? assistantMessage.map((part: any) => (typeof part === 'string' ? part : part?.text || '')).join('\n')
+            : '';
 
-      let finalText = textCals.map((c: any) => c.text).join('\n');
       let cards: any[] = [];
-
-      if (toolCals.length > 0) {
-        for (const tool of toolCals) {
-          if (tool.name === 'search_listings') {
-            const listings = await fetchListings(tool.input);
-            if (listings.length > 0) {
-              cards = listings;
-              if (!finalText) {
-                finalText = `I found some great places for you in ${tool.input.location || 'that area'}:`;
-              }
-            } else {
-               if (!finalText) finalText = `I couldn't find any homes matching that right now.`;
-            }
-          }
+      const looksLikeListingSearch = /\b(stay|stays|hotel|home|homes|villa|apartment|listing|listings|goa|pune|mumbai|jaipur|manali|kerala|srinagar)\b/i.test(userText);
+      if (looksLikeListingSearch) {
+        cards = await fetchListings({ location: userText });
+        if (cards.length > 0 && !finalText) {
+          finalText = 'I found a few places you might like:';
         }
       }
 
       if (finalText || cards.length > 0) {
-        setMessages(prev => [...prev, { 
-          id: Date.now().toString(), 
-          role: 'assistant', 
+        const assistantReply = {
+          id: Date.now().toString(),
+          role: 'assistant' as Role,
           text: finalText || 'Here are some places:',
           cards: cards.length > 0 ? cards : undefined
-        }]);
+        };
+        setMessages(prev => [...prev, assistantReply]);
+        await replaceStoredMessages(
+          [...mergedHistory, assistantReply].map(message => ({ role: message.role, text: message.text }))
+        );
       }
-
-    } catch (err: any) {
-      setMessages(prev => [...prev, { id: Date.now().toString(), role: 'assistant', text: "I'm having trouble connecting to my servers right now." }]);
+    } catch (err) {
+      const fallbackError = {
+        id: Date.now().toString(),
+        role: 'assistant' as Role,
+        text: "I'm having trouble connecting to my servers right now."
+      };
+      setMessages(prev => [...prev, fallbackError]);
+      await replaceStoredMessages(
+        [...mergedHistory, fallbackError].map(message => ({ role: message.role, text: message.text }))
+      );
     } finally {
       setIsLoading(false);
     }
@@ -171,22 +285,21 @@ export default function ChatScreen({ route, navigation }: any) {
 
   const handleSend = () => {
     if (!inputText.trim()) return;
-    
-    // Add user message immediately
+
     const userMsg = inputText.trim();
-    setMessages(prev => [...prev, { id: Date.now().toString(), role: 'user', text: userMsg }]);
+    const nextMessages = [...messages, { id: Date.now().toString(), role: 'user' as Role, text: userMsg }];
+    setMessages(nextMessages);
     setInputText('');
     setIsLoading(true);
-    
-    // Pass to logic
-    callClaude(userMsg);
+    replaceStoredMessages(nextMessages.map(message => ({ role: message.role, text: message.text })));
+    callModel(nextMessages);
+    Keyboard.dismiss();
   };
 
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar style="dark" />
-      
-      {/* ── Header ── */}
+
       <View style={styles.header}>
         <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}>
           <Text style={styles.backBtnText}>←</Text>
@@ -198,51 +311,60 @@ export default function ChatScreen({ route, navigation }: any) {
         <View style={{ width: 40 }} />
       </View>
 
-      {/* ── Chat Feed ── */}
-      <KeyboardAvoidingView 
-        style={styles.chatArea} 
+      <KeyboardAvoidingView
+        style={styles.chatArea}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 12 : 0}
       >
-        <ScrollView 
-          ref={scrollViewRef} 
+        <ScrollView
+          ref={scrollViewRef}
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
         >
+          {isHydratingMemory && messages.length === 1 ? (
+            <View style={[styles.messageWrapper, styles.aiWrapper]}>
+              <View style={styles.aiAvatar}>
+                <Text style={{ fontSize: 16 }}>{agent.icon}</Text>
+              </View>
+              <View style={[styles.bubble, styles.aiBubble, styles.typingBubble]}>
+                <ActivityIndicator size="small" color={COLORS.steelBlue} />
+              </View>
+            </View>
+          ) : null}
+
           {messages.map((msg) => {
             const isUser = msg.role === 'user';
             return (
               <View key={msg.id} style={[styles.messageWrapper, isUser ? styles.userWrapper : styles.aiWrapper]}>
-                
-                {/* Avatar for AI */}
                 {!isUser && (
                   <View style={styles.aiAvatar}>
                     <Text style={{ fontSize: 16 }}>{agent.icon}</Text>
                   </View>
                 )}
-                
+
                 <View style={[styles.bubble, isUser ? styles.userBubble : styles.aiBubble]}>
                   {!!msg.text && (
-                     <Text style={[styles.messageText, isUser ? styles.userText : styles.aiText]}>
-                       {msg.text}
-                     </Text>
+                    <Text style={[styles.messageText, isUser ? styles.userText : styles.aiText]}>
+                      {msg.text}
+                    </Text>
                   )}
-                  
-                  {/* Embedded Listings Cards */}
+
                   {msg.cards && msg.cards.length > 0 && (
                     <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.cardsScroll}>
                       {msg.cards.map((card: any, idx: number) => (
-                        <TouchableOpacity 
-                           key={card.id || idx} 
-                           style={styles.listingCard}
-                           onPress={() => navigation.navigate('ListingDetail', { item: {
-                             ...card,
-                             image: (card.photos && card.photos[0]) || 'https://images.unsplash.com/photo-1522708323590-d24dbb6b0267?w=600',
-                             rating: '4.95', badge: 'Agent pick'
-                           }})}
+                        <TouchableOpacity
+                          key={card.id || idx}
+                          style={styles.listingCard}
+                          onPress={() => navigation.navigate('ListingDetail', { item: {
+                            ...card,
+                            image: (card.photos && card.photos[0]) || 'https://images.unsplash.com/photo-1522708323590-d24dbb6b0267?w=600',
+                            rating: '4.95',
+                            badge: 'Agent pick'
+                          } })}
                         >
-                          <Image 
-                            source={{ uri: (card.photos && card.photos[0]) || 'https://images.unsplash.com/photo-1522708323590-d24dbb6b0267?w=600' }} 
-                            style={styles.cardImage} 
+                          <Image
+                            source={{ uri: (card.photos && card.photos[0]) || 'https://images.unsplash.com/photo-1522708323590-d24dbb6b0267?w=600' }}
+                            style={styles.cardImage}
                           />
                           <View style={styles.cardBody}>
                             <Text style={styles.cardTitle} numberOfLines={1}>{card.title}</Text>
@@ -256,8 +378,7 @@ export default function ChatScreen({ route, navigation }: any) {
               </View>
             );
           })}
-          
-          {/* Typing Indicator */}
+
           {isLoading && (
             <View style={[styles.messageWrapper, styles.aiWrapper]}>
               <View style={styles.aiAvatar}>
@@ -270,8 +391,7 @@ export default function ChatScreen({ route, navigation }: any) {
           )}
         </ScrollView>
 
-        {/* ── Input Area ── */}
-        <View style={styles.inputContainer}>
+        <View style={[styles.inputContainer, { bottom: keyboardHeight > 0 ? keyboardHeight - (Platform.OS === 'ios' ? 10 : 0) : 0 }]}>
           <TextInput
             style={styles.textInput}
             placeholder="Ask anything..."
@@ -282,10 +402,10 @@ export default function ChatScreen({ route, navigation }: any) {
             maxLength={500}
             textAlignVertical="center"
           />
-          <TouchableOpacity 
-            style={[styles.sendBtn, inputText.trim().length === 0 && styles.sendBtnDisabled]} 
+          <TouchableOpacity
+            style={[styles.sendBtn, inputText.trim().length === 0 && styles.sendBtnDisabled]}
             onPress={handleSend}
-            disabled={inputText.trim().length === 0 || isLoading}
+            disabled={inputText.trim().length === 0 || isLoading || isHydratingMemory}
           >
             <Text style={styles.sendIcon}>↑</Text>
           </TouchableOpacity>
@@ -340,7 +460,7 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     padding: 16,
-    paddingBottom: 24,
+    paddingBottom: 120,
   },
   messageWrapper: {
     flexDirection: 'row',
@@ -438,6 +558,10 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   inputContainer: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: COLORS.white,
@@ -454,7 +578,7 @@ const styles = StyleSheet.create({
     minHeight: 44,
     maxHeight: 100,
     paddingHorizontal: 16,
-    paddingTop: 12, // Needs both top/bottom spacing to center multiline
+    paddingTop: 12,
     paddingBottom: 12,
     fontSize: 15,
     color: COLORS.darkNavy,
